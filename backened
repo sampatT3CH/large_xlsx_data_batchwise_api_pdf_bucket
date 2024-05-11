@@ -1,0 +1,265 @@
+const axios = require('axios');
+const puppeteer = require('puppeteer');
+const path = require('path');
+const { Storage } = require('@google-cloud/storage');
+const { promisify } = require('util');
+const pipeline = promisify(require('stream').pipeline);
+const { createReadStream, createWriteStream } = require('fs');
+const { join } = require('path');
+const PDFDocument = require('pdfkit');
+const zlib = require('zlib');
+
+
+const storage = new Storage({
+    keyFilename: 'gcpkey.json',
+  });
+//   const bucketName = 'flashaid';
+//   const folderName = 'raheja';
+
+exports.sendUniversalDoc = async (req, res) => {
+  try { 
+    const fileBuffer = req.files[0].buffer;
+    const base64String = fileBuffer.toString('base64');
+    const base64Buffer = Buffer.from(base64String, 'base64');
+    const workbook = xlsx.read(base64Buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = xlsx.utils.sheet_to_json(worksheet);
+
+    const batchSize = 1;
+    const pdfUrls = await processData(jsonData, batchSize);
+
+    console.log('All PDFs saved:', pdfUrls);
+  } catch(err) {
+    console.log(err);
+    res.status(500).send('Internal Server Error');
+  }
+};
+
+
+async function processData(jsonData, batchSize) {
+ try{ const batches = [];
+  for (let i = 0; i < jsonData.length; i += batchSize) {
+      batches.push(jsonData.slice(i, i + batchSize));
+  }
+
+  // const pdfUrls = [];
+  for (const batch of batches) {
+      const batchPdfUrls = await processDataBatch(batch);
+      // pdfUrls.push(...batchPdfUrls);
+  }
+
+  // return pdfUrls;
+} catch(error){
+  console.log(error)
+}
+}
+
+
+
+async function processDataBatch(batch) {
+ try { const pdfUrls = [];
+console.log(batch,"batch")
+  for (const data of batch) {
+    console.log(data,"from process batch")
+      const generateToken = await axios.post('https://universal-sompo.ind.in/LifeBoxCOIAPI/api/Master/GenerateToken', {
+          "UserName": "LIFEBOX",
+          "Password": "$Welcome@#123"
+      });
+
+      const getPolicyUrl = await axios.post('https://universal-sompo.ind.in/LifeBoxCOIAPI/api/LBCOI/GetLBPolicyDetails', {
+          "Certificate_No": data.POLICY_NO,
+          "TokenId": generateToken.data.TokenId
+      });
+
+    
+      const pdfData = getPolicyUrl.data.URL;
+      console.log(pdfData,"pdf for" ,data.CUSTOMER_ID)
+
+      const pdfUrl = await convertUrlToPdf(pdfData,data.CUSTOMER_ID,data.POLICY_NO)
+      // const fileName = `${data.POLICY_NO}.pdf`;
+
+   
+      // const uploadToGcp = await uploadToGCP(data.CUSTOMER_ID);
+      // pdfUrls.push(pdfUrl);
+  }
+
+  // return pdfUrls;
+} catch(err){
+  console.log(err);
+}
+}
+
+async function convertUrlToPdf(pdfData,id,certificate_no){
+    await fs.mkdir( 'temp', { recursive: true });
+     const browser = await puppeteer.launch();
+     const page = await browser.newPage()
+      await page.goto(pdfData,{waitUntil:'networkidle0'});
+      await page.pdf({ path: `temp/${id}-universal.pdf`, format: 'A4' });
+      await browser.close();
+
+      const newFileName = `${id}-universal-policy-${generateRandomString()}.pdf`;
+      await storage.bucket('flashaid').upload(path.join('temp', `${id}-universal.pdf`), {
+        destination: `coi/${newFileName}`,
+      });
+    
+      const [signedUrl] = await storage.bucket('flashaid').file(`coi/${newFileName}`).getSignedUrl({
+        action: 'read',
+        expires: Date.now() + (1000 * 60 * 60 * 24 * 365 * 2500), 
+    });
+    const publicUrl = extractPublicUrl(signedUrl);
+    console.log(signedUrl, id)
+
+      const db = getFirestore();
+              const serviceRef = db.collection('Insurance');
+              const querySnapshot = await serviceRef.where('id', '==', id).get();
+  
+              querySnapshot.forEach(async (doc) => {
+                  const docId = doc.id;
+                  const links = doc.data().links || {};
+                  links.UNI_COI = `https://storage.googleapis.com${publicUrl}`;
+                  const plan = doc.data().plan || {};
+                  plan.certificate = certificate_no; 
+                  await serviceRef.doc(docId).update({ links,plan});
+                  console.log("done for",id)
+              });
+    await fs.rmdir('temp', { recursive: true }); 
+}
+
+
+// async function uploadToGCP(pdfData, fileName) {
+// try {
+//        const newFileName = `${extractedId}-universal-policy-${generateRandomString()}.pdf`;
+//     await storage.bucket('raheja').upload(path.join('univer', file), {
+//       destination: `universal/${newFileName}`,
+//     });
+  
+//     const [signedUrl] = await storage.bucket('raheja').file(`universal/${newFileName}`).getSignedUrl({
+//       action: 'read',
+//       expires: Date.now() + (1000 * 60 * 60 * 24 * 365 * 2500), 
+//   });
+//   const publicUrl = extractPublicUrl(signedUrl);
+// }catch(err){
+
+// }
+// }
+
+
+
+
+
+// exports.sendUniversalDoc = async (req, res) => {
+//   try {
+//       const fileBuffer = req.files[0].buffer;
+//       const base64String = fileBuffer.toString('base64');
+//       const base64Buffer = Buffer.from(base64String, 'base64');
+//       const workbook = xlsx.read(base64Buffer, { type: 'buffer' });
+//       const sheetName = workbook.SheetNames[0];
+//       const worksheet = workbook.Sheets[sheetName];
+//       const jsonData = xlsx.utils.sheet_to_json(worksheet);
+//        console.log(jsonData,"jsondata")
+//       // Batch size for processing
+//       const batchSize = 100; // Adjust according to your requirement
+//       const batches = [];
+//       for (let i = 0; i < jsonData.length; i += batchSize) {
+//           batches.push(jsonData.slice(i, i + batchSize));
+//       }
+
+//       await Promise.all(batches.map(async (batch) => {
+//           const generateToken = await axios.post('https://universal-sompo.ind.in/LifeBoxCOIAPI/api/Master/GenerateToken', {
+//               "UserName": "LIFEBOX",
+//               "Password": "$Welcome@#123"
+//           });
+
+          
+
+//           await Promise.all(batch.map(async (val) => {
+//               try {
+//                   const getPolicyUrl = await axios.post('https://universal-sompo.ind.in/LifeBoxCOIAPI/api/LBCOI/GetLBPolicyDetails', {
+//                       "Certificate_No": val["POLICY_NO"],
+//                       "TokenId": `${generateToken.data.TokenId}`
+//                   });
+//                   const browser = await puppeteer.launch();
+//                   const page = await browser.newPage();
+//                   await page.goto(`${getPolicyUrl.data.URL}`);
+//                   await page.pdf({ path: `univer/${val["CUSTOMER_ID"]}-universal.pdf`, format: 'A4' });
+//               } catch (error) {
+//                   console.error('Error processing record:', error);
+//               }
+//           }));
+
+//           await browser.close();
+//       }));
+
+//         const files = await fs.readdir(`univer`);
+//   for(const file of files){ 
+//     const fileName = file.substring(0, file.lastIndexOf('.'));
+//     const id = transformToIdFormat(fileName);
+//     // const mail= getEmailFromId(id);
+//     console.log(id,"id")
+  
+  
+//     const extractedId = id.substring(0, id.indexOf("-", id.indexOf("-") + 1));
+
+//     const newFileName = `${extractedId}-universal-policy-${generateRandomString()}.pdf`;
+//     await storage.bucket('raheja').upload(path.join('univer', file), {
+//       destination: `universal/${newFileName}`,
+//     });
+  
+//     const [signedUrl] = await storage.bucket('raheja').file(`universal/${newFileName}`).getSignedUrl({
+//       action: 'read',
+//       expires: Date.now() + (1000 * 60 * 60 * 24 * 365 * 2500), 
+//   });
+//   const publicUrl = extractPublicUrl(signedUrl);
+  
+//   console.log(`${signedUrl} for extractedId`)
+//   // sendemail(`${mail}`,'UNIVERSAL POLICY CERTIFICATE', '',`open this link to view your policy certificate ${signedUrl}`);
+  
+//   // const db = getFirestore();
+//   //             const serviceRef = db.collection('TestInsurance');
+//   //             const querySnapshot = await serviceRef.where('id', '==', extractedId).get();
+  
+//   //             querySnapshot.forEach(async (doc) => {
+//   //                 const docId = doc.id;
+//   //                 const links = doc.data().links || {};
+//   //                 links.UNI_COI = `${signedUrl}`;
+//   //                 await serviceRef.doc(docId).update({ links});
+//   //                 console.log("done for",docId)
+//   //             });
+  
+//   }
+//   // await fs.rmdir('univer', { recursive: true }); 
+//   res.status(200).json({
+//     message:"ok"
+//   });
+//       res.status(200).json({
+//           message: "ok"
+//       });
+//   } catch (err) {
+//       console.error(err);
+//       res.status(500).send('Internal Server Error');
+//   }
+// };
+
+
+
+
+
+function generateRandomString() {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+}
+
+function transformToIdFormat(fileName) {
+  return fileName.replace(/(\d{4})(\d+)/, '$1-$2');
+}
+
+function extractPublicUrl(signedUrl) {
+  const url = new URL(signedUrl);
+  return url.pathname;
+}
+
+function getEmailFromId(str){
+  const regex = /([a-zA-Z0-9]+)-universal-(.*)/;
+  const match = str.match(regex);
+  return match ? match[2] : null;
+};
