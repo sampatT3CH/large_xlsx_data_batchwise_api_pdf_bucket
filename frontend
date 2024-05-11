@@ -1,0 +1,242 @@
+import { useRef, useState } from "react";
+import Button from "./Button";
+// import Spinner from "./Spinner";
+import toast from "react-hot-toast";
+import { HiX } from "react-icons/hi";
+import CustomCheckbox from "./CustomCheckbox";
+import styled from "styled-components";
+import { sendUniversalDoc } from "../ApiCalls/MultipleApi";
+// import Input from "./Input";
+//import { sendUniversalDoc } from "../ApiCalls/MultipleApi";
+// import { uploadAndSendDoc } from "../ApiCalls/MultipleApi";
+
+const DocDiv = styled.div`
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 10px 10px;
+`;
+
+function HandleFile4({ children }) {
+  const fileInputRef = useRef(null);
+  const [files, setFiles] = useState([]);
+//   const [isLoading, setLoading] = useState(false);
+  const [sendOnWhatsApp, setSendOnWhatsApp] = useState(false);
+
+
+  const handleLabelClick = () => {
+    console.log(fileInputRef)
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  async function HandleSubmit() {
+    if (files.length === 0) {
+        toast.error("Please select a file to upload!!");
+        return;
+      }
+    
+      const formData = new FormData();
+      formData.append("file", files[0]);
+
+      try {
+        const response = await sendUniversalDoc(formData)
+        // const response = await fetch("http://localhost:9090/multiple/sendUniversalDoc", {
+        //   method: "POST",
+        //   body: formData,
+        // });
+        console.log(response)
+    
+        if (response.data.message == "ok") {
+          alert("File uploaded successfully!");
+          return;
+        } else {
+          alert("Failed to upload file");
+          return;
+        }
+      } catch (error) {
+        console.error("Error uploading file:", error);
+       alert("Error uploading file");
+      }
+    // console.log(files)
+    // if (files.length === 0) {
+    //   toast.error("Please select a file to upload!!");
+    //   return;
+    // }
+    // console.log(files)
+    //      const formData = new FormData();
+    //     formData.append("file",files[0]);
+    //     console.log(formData,"filing")
+    //     const resp = await sendUniversalDoc(formData)
+
+
+    // if (!docName) {
+    //   toast.error("Please provide doc name!!");
+    //   return;
+    // }
+
+    // for (const file of files) {
+    //     console.log(file,"file")
+    //     const formData = new FormData();
+    //     formData.append("file",file)
+    //     try {
+    //         console.log(formData,"formData")
+    //         const resp = await sendUniversalDoc({formData})
+    //         console.log("resp",resp)
+    //     } catch(err){
+    //         console.log(err)
+    //     }
+       
+    // }
+
+    // // Array to store upload status for each file
+    // const uploadStatus = [];
+
+    // setLoading(true);
+    // let i = 0;
+    // for (const file of files) {
+    //   const formData = new FormData();
+    //   formData.append("file", file);
+    //   formData.append(
+    //     "doc_name",
+    //     docName === "OTHERS" ? customDocName : docName,
+    //   );
+    //   formData.append("send", sendOnWhatsApp ? "true" : "false");
+
+    //   try {
+    //     toast.promise(uploadAndSendDoc({ formData }), {
+    //       loading: `Uploading ${file.name}...`,
+    //       success: (response) => {
+    //         uploadStatus.push({
+    //           name: file.name,
+    //           status: true,
+    //           msg: response.data.message,
+    //           url: response.data.url,
+    //         });
+    //         if (++i === files.length) {
+    //           generateCsv(uploadStatus);
+    //         }
+    //         return `${file.name} uploaded successfully!`;
+    //       },
+    //       error: (error) => {
+    //         uploadStatus.push({
+    //           name: file.name,
+    //           status: false,
+    //           msg: error.response.data.message,
+    //           url: error.response.data.url,
+    //         });
+    //         if (++i === files.length) {
+    //           generateCsv(uploadStatus);
+    //         }
+    //         return `Error uploading ${file.name}.`;
+    //       },
+    //     });
+    //   } catch (error) {
+    //     console.error(error);
+    //     // Handle error if necessary
+    //   }
+    // }
+
+    // Reset all inputs
+  }
+
+//   function generateCsv(uploadStatus) {
+//     setFiles([]);
+//     setDocName("");
+//     setSendOnWhatsApp(false);
+
+//     const columnHeadings = ["FlashId", "Upload_Status", "Message", "URL"];
+//     const csvContent =
+//       "data:text/csv;charset=utf-8," +
+//       [columnHeadings.join(",")]
+//         .concat(
+//           // Add column headings as the first row
+//           uploadStatus.map((row) => Object.values(row).join(",")),
+//         )
+//         .join("\n");
+
+//     // Create a link element to trigger download
+//     const encodedUri = encodeURI(csvContent);
+//     const link = document.createElement("a");
+//     link.setAttribute("href", encodedUri);
+//     link.setAttribute("download", "upload_status.csv");
+//     document.body.appendChild(link);
+//     // Click the link to trigger download
+//     link.click();
+//     setLoading(false);
+//   }
+
+//   if (isLoading) return <Spinner />;
+
+  return (
+    <div style={{ width: "100%" }}>
+      <Button color="gray" style={{ width: "100%" }} onClick={handleLabelClick}>
+        {children}
+      </Button>
+   
+      {files.length > 0 && (
+        <DocDiv>
+          <p>Selected {files.length} docs!</p>
+        </DocDiv>
+      )}
+      <DocDiv>
+        <label htmlFor="">Send on WhatsApp?</label>
+        <CustomCheckbox
+          type="checkbox"
+          checked={sendOnWhatsApp}
+          onChange={(e) => {
+            setSendOnWhatsApp(e.target.checked ? true : false);
+          }}
+        />
+      </DocDiv>
+      {/* HiX */}
+
+      <Button
+        disabled={files.length === 0}
+        color={files.length ? "black" : "gray"}
+        style={{ width: "100%", marginTop: "10px" }}
+        onClick={HandleSubmit}
+      >
+        Upload
+      </Button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const selectedFiles = Array.from(e.target.files);
+          setFiles(selectedFiles);
+          e.target.value = null;
+        }}
+      />
+      {files.length > 0 && (
+        <div>
+          {files.map((file, index) => (
+            <div
+              key={index}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <p style={{ textAlign: "center" }}>{file.name}</p>
+              <HiX
+                onClick={() => {
+                  const updatedFiles = [...files];
+                  updatedFiles.splice(index, 1);
+                  setFiles(updatedFiles);
+                }}
+                style={{ cursor: "pointer", color: "red" }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default HandleFile4;
